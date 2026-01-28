@@ -42,3 +42,4 @@ iOSInjectionProject/
 
 # Local config secrets
 Config/Secrets.xcconfig
+logs/
