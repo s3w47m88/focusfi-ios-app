@@ -6,9 +6,25 @@ struct CurrentFundsView: View {
 
     let totalBalance: Double
     @State private var isExpanded = false
+    @State private var expandedBanks: Set<String> = []
 
     private var groupedAccounts: [String: [BankAccount]] {
         Dictionary(grouping: bankAccounts) { $0.bankName }
+    }
+
+    private var sortedGroupIds: [String] {
+        groupedAccounts.keys.sorted { lhs, rhs in
+            let lhsAccounts = groupedAccounts[lhs] ?? []
+            let rhsAccounts = groupedAccounts[rhs] ?? []
+            let lhsCreditOnly = !lhsAccounts.isEmpty && lhsAccounts.allSatisfy { $0.isCredit }
+            let rhsCreditOnly = !rhsAccounts.isEmpty && rhsAccounts.allSatisfy { $0.isCredit }
+            if lhsCreditOnly != rhsCreditOnly {
+                return !lhsCreditOnly
+            }
+            let lhsName = displayName(for: lhs)
+            let rhsName = displayName(for: rhs)
+            return lhsName < rhsName
+        }
     }
 
     var body: some View {
@@ -19,7 +35,7 @@ struct CurrentFundsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
-                    Text("Current Funds")
+                    Text("Accounts")
                         .font(.headline)
 
                     Spacer()
@@ -27,7 +43,7 @@ struct CurrentFundsView: View {
                     Text("$\(totalBalance, specifier: "%.2f")")
                         .font(.title3)
                         .fontWeight(.semibold)
-                        .foregroundStyle(totalBalance >= 0 ? Color.green : Color.red)
+                        .foregroundStyle(balanceColor(totalBalance))
                 }
                 .padding()
                 .background {
@@ -40,26 +56,74 @@ struct CurrentFundsView: View {
 
             if isExpanded {
                 VStack(alignment: .leading, spacing: 16) {
-                    ForEach(groupedAccounts.keys.sorted(), id: \.self) { bankName in
-                        BankSection(bankName: bankName, accounts: groupedAccounts[bankName] ?? [])
+                    ForEach(sortedGroupIds, id: \.self) { groupId in
+                        BankSection(
+                            bankName: displayName(for: groupId),
+                            accounts: groupedAccounts[groupId] ?? [],
+                            isExpanded: bindingForBank(groupId)
+                        )
                     }
                 }
                 .padding(.top, 16)
             }
         }
+        .onAppear {
+            if expandedBanks.isEmpty {
+                expandedBanks = Set(groupedAccounts.keys)
+            }
+        }
+    }
+
+    private func bindingForBank(_ groupId: String) -> Binding<Bool> {
+        Binding(
+            get: { expandedBanks.contains(groupId) },
+            set: { isOpen in
+                if isOpen {
+                    expandedBanks.insert(groupId)
+                } else {
+                    expandedBanks.remove(groupId)
+                }
+            }
+        )
+    }
+
+    private func displayName(for groupId: String) -> String {
+        groupedAccounts[groupId]?.first?.bankName ?? groupId
     }
 }
 
 struct BankSection: View {
     let bankName: String
     let accounts: [BankAccount]
+    @Binding var isExpanded: Bool
 
     private var bankTotal: Double {
-        accounts.reduce(0) { $0 + $1.balance }
+        accounts
+            .filter { $0.includeInTotal }
+            .reduce(0) { $0 + $1.currentBalance }
+    }
+
+    private var sortedAccounts: [BankAccount] {
+        accounts.sorted { lhs, rhs in
+            if lhs.isFavorite != rhs.isFavorite {
+                return lhs.isFavorite && !rhs.isFavorite
+            }
+            if lhs.isCredit != rhs.isCredit {
+                return !lhs.isCredit
+            }
+            return lhs.accountName < rhs.accountName
+        }
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        DisclosureGroup(isExpanded: $isExpanded) {
+            VStack(spacing: 8) {
+                ForEach(sortedAccounts) { account in
+                    AccountRow(account: account)
+                }
+            }
+            .padding(.horizontal)
+        } label: {
             HStack {
                 Text(bankName)
                     .font(.subheadline)
@@ -70,33 +134,7 @@ struct BankSection: View {
                 Text("$\(bankTotal, specifier: "%.2f")")
                     .font(.subheadline)
                     .fontWeight(.medium)
-                    .foregroundStyle(bankTotal >= 0 ? Color.primary : Color.red)
-            }
-            .padding(.horizontal)
-
-            VStack(spacing: 8) {
-                ForEach(accounts.sorted(by: { $0.accountName < $1.accountName })) { account in
-                    HStack {
-                        Circle()
-                            .fill(account.balance >= 0 ? Color.green : Color.red)
-                            .frame(width: 8, height: 8)
-
-                        Text(account.accountName)
-                            .font(.caption)
-
-                        Spacer()
-
-                        Text("$\(account.balance, specifier: "%.2f")")
-                            .font(.caption)
-                            .foregroundStyle(account.balance >= 0 ? Color.primary : Color.red)
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                    .background {
-                        RoundedRectangle(cornerRadius: 10)
-                            .fill(.ultraThinMaterial)
-                    }
-                }
+                    .foregroundStyle(balanceColor(bankTotal))
             }
             .padding(.horizontal)
         }
@@ -106,6 +144,65 @@ struct BankSection: View {
                 .fill(.ultraThinMaterial)
         }
     }
+}
+
+struct AccountRow: View {
+    @Bindable var account: BankAccount
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Image(systemName: account.isFavorite ? "star.fill" : "star")
+                    .foregroundStyle(account.isFavorite ? Color.yellow : Color.secondary)
+                    .font(.footnote)
+
+                Text(account.accountName)
+                    .font(.subheadline)
+
+                Spacer()
+            }
+
+            HStack(spacing: 12) {
+                Text("Available")
+                    .foregroundStyle(.secondary)
+                Text("$\(account.availableBalance, specifier: "%.2f")")
+                    .foregroundStyle(.green)
+
+                Text("Current")
+                    .foregroundStyle(.secondary)
+                Text("$\(account.currentBalance, specifier: "%.2f")")
+                    .foregroundStyle(.secondary)
+            }
+            .font(.footnote)
+
+            Toggle("Include in Accounts Total", isOn: $account.includeInTotal)
+                .font(.footnote)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background {
+            RoundedRectangle(cornerRadius: 10)
+                .fill(.ultraThinMaterial)
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button {
+                account.isFavorite.toggle()
+            } label: {
+                Label(account.isFavorite ? "Unfavorite" : "Favorite", systemImage: account.isFavorite ? "star.slash" : "star")
+            }
+            .tint(.yellow)
+        }
+    }
+}
+
+private func balanceColor(_ value: Double) -> Color {
+    if value > 0 {
+        return .green
+    }
+    if value < 0 {
+        return .red
+    }
+    return .secondary
 }
 
 #Preview {

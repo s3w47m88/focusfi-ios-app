@@ -39,3 +39,6 @@ iOSInjectionProject/
 
 # macOS
 .DS_Store
+
+# Local config secrets
+Config/Secrets.xcconfig

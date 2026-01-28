@@ -28,6 +28,14 @@ struct TransactionListView: View {
         }
     }
 
+    private var totalIncome: Double {
+        incomeTransactions.reduce(0) { $0 + $1.amount }
+    }
+
+    private var totalExpenses: Double {
+        expenseTransactions.reduce(0) { $0 + $1.amount }
+    }
+
     var body: some View {
         VStack(spacing: 16) {
             // Income Section
@@ -43,17 +51,16 @@ struct TransactionListView: View {
 
                         Spacer()
 
-                        Text("\(incomeTransactions.count)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(.ultraThinMaterial, in: Capsule())
+                        Text("$\(totalIncome, specifier: "%.2f")")
+                            .font(.title3)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(.green)
                     }
                     .padding()
                     .background {
                         RoundedRectangle(cornerRadius: 16)
                             .fill(.ultraThinMaterial)
+                            .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: 4)
                     }
                 }
                 .buttonStyle(.plain)
@@ -97,17 +104,16 @@ struct TransactionListView: View {
 
                         Spacer()
 
-                        Text("\(expenseTransactions.count)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(.ultraThinMaterial, in: Capsule())
+                        Text("$\(totalExpenses, specifier: "%.2f")")
+                            .font(.title3)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(.red)
                     }
                     .padding()
                     .background {
                         RoundedRectangle(cornerRadius: 16)
                             .fill(.ultraThinMaterial)
+                            .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: 4)
                     }
                 }
                 .buttonStyle(.plain)
