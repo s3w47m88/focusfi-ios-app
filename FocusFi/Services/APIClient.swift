@@ -21,6 +21,21 @@ enum APIError: LocalizedError {
     case serverError(Int, String?)
     case unknown(Error)
 
+    var statusCode: Int? {
+        switch self {
+        case .unauthorized:
+            return 401
+        case .forbidden:
+            return 403
+        case .notFound:
+            return 404
+        case .serverError(let code, _):
+            return code
+        default:
+            return nil
+        }
+    }
+
     var errorDescription: String? {
         switch self {
         case .invalidURL:
@@ -104,6 +119,33 @@ actor APIClient {
         }
     }
 
+    func preflightConnectivityCheck() async throws {
+        guard !APIConfig.apiBaseURL.isEmpty else {
+            throw APIError.invalidURL
+        }
+        guard let url = URL(string: "\(APIConfig.apiBaseURL)/health") else {
+            throw APIError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = HTTPMethod.get.rawValue
+        request.timeoutInterval = 10
+
+        do {
+            let (_, response) = try await session.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw APIError.unknown(NSError(domain: "Invalid response", code: -1))
+            }
+            guard (200...299).contains(httpResponse.statusCode) else {
+                throw APIError.serverError(httpResponse.statusCode, "Health check failed")
+            }
+        } catch let error as APIError {
+            throw error
+        } catch {
+            throw APIError.networkError(error)
+        }
+    }
+
     // MARK: - Request Methods
 
     /// Make an authenticated GET request
@@ -129,6 +171,16 @@ actor APIClient {
             endpoint: endpoint,
             queryItems: nil,
             body: body
+        )
+    }
+
+    /// Make an authenticated POST request without a request body
+    func post<T: Decodable>(endpoint: String) async throws -> T {
+        return try await request(
+            method: .post,
+            endpoint: endpoint,
+            queryItems: nil,
+            body: nil as Empty?
         )
     }
 
@@ -164,6 +216,8 @@ actor APIClient {
         body: B?,
         retryCount: Int = 0
     ) async throws -> T {
+        let requestID = UUID().uuidString.prefix(8)
+
         // Build URL
         var urlComponents = URLComponents(string: "\(APIConfig.apiBaseURL)\(endpoint)")
         if let queryItems = queryItems, !queryItems.isEmpty {
@@ -173,6 +227,10 @@ actor APIClient {
         guard let url = urlComponents?.url else {
             throw APIError.invalidURL
         }
+
+        #if DEBUG
+        print("[APIClient][\(requestID)] \(method.rawValue) \(url.absoluteString)")
+        #endif
 
         // Build request
         var request = URLRequest(url: url)
@@ -199,6 +257,9 @@ actor APIClient {
         do {
             (data, response) = try await session.data(for: request)
         } catch {
+            #if DEBUG
+            print("[APIClient][\(requestID)] network error: \(error.localizedDescription)")
+            #endif
             throw APIError.networkError(error)
         }
 
@@ -209,6 +270,9 @@ actor APIClient {
 
         switch httpResponse.statusCode {
         case 200...299:
+            #if DEBUG
+            print("[APIClient][\(requestID)] status=\(httpResponse.statusCode)")
+            #endif
             // Success - decode response
             do {
                 return try decoder.decode(T.self, from: data)
@@ -236,6 +300,9 @@ actor APIClient {
             }
 
         case 401:
+            #if DEBUG
+            print("[APIClient][\(requestID)] status=401, attempting token refresh")
+            #endif
             // Unauthorized - try to refresh token and retry once
             if retryCount < 1 {
                 do {
@@ -254,12 +321,21 @@ actor APIClient {
             throw APIError.unauthorized
 
         case 403:
+            #if DEBUG
+            print("[APIClient][\(requestID)] status=403")
+            #endif
             throw APIError.forbidden
 
         case 404:
+            #if DEBUG
+            print("[APIClient][\(requestID)] status=404")
+            #endif
             throw APIError.notFound
 
         default:
+            #if DEBUG
+            print("[APIClient][\(requestID)] status=\(httpResponse.statusCode)")
+            #endif
             // Try to decode error message
             let errorMessage = try? decoder.decode(APIErrorResponse.self, from: data)
             throw APIError.serverError(httpResponse.statusCode, errorMessage?.error)

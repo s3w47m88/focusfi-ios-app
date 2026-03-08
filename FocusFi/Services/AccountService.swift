@@ -39,6 +39,9 @@ class AccountService: ObservableObject {
     @Published var accounts: [APIAccount] = []
     @Published var isLoading: Bool = false
     @Published var errorMessage: String?
+    @Published var lastSyncAt: Date?
+    @Published var lastSyncStatus: SyncStatus = .idle
+    @Published var lastSyncError: SyncErrorContext?
 
     private let apiClient = APIClient.shared
 
@@ -50,15 +53,35 @@ class AccountService: ObservableObject {
     func fetchAccounts() async {
         isLoading = true
         errorMessage = nil
+        lastSyncStatus = .syncing
+        lastSyncError = nil
         defer { isLoading = false }
 
         do {
             let result: AccountsResponse = try await apiClient.get(endpoint: "/plaid/accounts")
             self.accounts = result.accounts
+            self.lastSyncAt = Date()
+            self.lastSyncStatus = .success
         } catch let error as APIError {
             self.errorMessage = error.errorDescription
+            self.lastSyncAt = Date()
+            self.lastSyncStatus = .failure
+            self.lastSyncError = SyncErrorContext(
+                endpoint: "/plaid/accounts",
+                message: error.errorDescription ?? "Unknown API error",
+                statusCode: error.statusCode,
+                timestamp: Date()
+            )
         } catch {
             self.errorMessage = error.localizedDescription
+            self.lastSyncAt = Date()
+            self.lastSyncStatus = .failure
+            self.lastSyncError = SyncErrorContext(
+                endpoint: "/plaid/accounts",
+                message: error.localizedDescription,
+                statusCode: nil,
+                timestamp: Date()
+            )
         }
     }
 

@@ -189,6 +189,9 @@ class TransactionService: ObservableObject {
     @Published var income: [APIIncome] = []
     @Published var isLoading: Bool = false
     @Published var errorMessage: String?
+    @Published var lastSyncAt: Date?
+    @Published var lastSyncStatus: SyncStatus = .idle
+    @Published var lastSyncError: SyncErrorContext?
 
     private let apiClient = APIClient.shared
 
@@ -199,6 +202,8 @@ class TransactionService: ObservableObject {
     func fetchExpensesAndIncome() async {
         isLoading = true
         errorMessage = nil
+        lastSyncStatus = .syncing
+        lastSyncError = nil
         defer { isLoading = false }
 
         logger.notice("Starting fetchExpensesAndIncome...")
@@ -209,6 +214,8 @@ class TransactionService: ObservableObject {
             let (expenses, income) = try await (expensesResult, incomeResult)
             self.expenses = expenses
             self.income = income
+            self.lastSyncAt = Date()
+            self.lastSyncStatus = .success
             logger.notice("Fetched \(expenses.count) expenses, \(income.count) income items")
             let totalExpenses = expenses.reduce(0) { $0 + $1.amount }
             let totalIncome = income.reduce(0) { $0 + $1.invoiceTotal }
@@ -236,9 +243,25 @@ class TransactionService: ObservableObject {
             } else {
                 self.errorMessage = error.errorDescription
             }
+            self.lastSyncAt = Date()
+            self.lastSyncStatus = .failure
+            self.lastSyncError = SyncErrorContext(
+                endpoint: "/expenses,/income",
+                message: self.errorMessage ?? (error.errorDescription ?? "Unknown API error"),
+                statusCode: error.statusCode,
+                timestamp: Date()
+            )
             logger.error("APIError: \(self.errorMessage ?? "unknown")")
         } catch {
             self.errorMessage = error.localizedDescription
+            self.lastSyncAt = Date()
+            self.lastSyncStatus = .failure
+            self.lastSyncError = SyncErrorContext(
+                endpoint: "/expenses,/income",
+                message: error.localizedDescription,
+                statusCode: nil,
+                timestamp: Date()
+            )
             logger.error("Error: \(error.localizedDescription)")
         }
     }

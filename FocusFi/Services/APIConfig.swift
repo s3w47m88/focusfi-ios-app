@@ -56,6 +56,33 @@ enum APIConfig {
             ?? ""
     }
 
+    static func configurationIssues() -> [String] {
+        var issues: [String] = []
+
+        if apiBaseURL.isEmpty || URL(string: apiBaseURL) == nil {
+            issues.append("API_BASE_URL is missing or invalid")
+        }
+        if supabaseURL.isEmpty || URL(string: supabaseURL) == nil {
+            issues.append("SUPABASE_URL is missing or invalid")
+        }
+        if supabaseAnonKey.isEmpty {
+            issues.append("SUPABASE_ANON_KEY is missing")
+        }
+
+        return issues
+    }
+
+    static func logRuntimeConfiguration() {
+        #if DEBUG
+        let apiHost = URL(string: apiBaseURL)?.host ?? "invalid"
+        let supabaseHost = URL(string: supabaseURL)?.host ?? "invalid"
+        print("[APIConfig] environment=\(environment)")
+        print("[APIConfig] apiHost=\(apiHost)")
+        print("[APIConfig] supabaseHost=\(supabaseHost)")
+        print("[APIConfig] hasSupabaseAnonKey=\(!supabaseAnonKey.isEmpty)")
+        #endif
+    }
+
     // MARK: - Request Configuration
 
     static let requestTimeout: TimeInterval = 30

@@ -1,6 +1,6 @@
 #include "Secrets.xcconfig"
 
-API_BASE_URL = api.yourfinanceapp.com
+API_BASE_URL = backend-production-991c0.up.railway.app
 
 INFOPLIST_KEY_API_BASE_URL = $(API_BASE_URL)
 INFOPLIST_KEY_SUPABASE_URL = $(SUPABASE_URL)

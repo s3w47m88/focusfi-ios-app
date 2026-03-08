@@ -1,5 +1,8 @@
 import SwiftUI
 import SwiftData
+#if canImport(UIKit)
+import UIKit
+#endif
 
 enum AppearanceMode: String, CaseIterable {
     case auto = "Auto"
@@ -32,6 +35,7 @@ struct ContentView: View {
     @State private var endDate: Date
     @State private var showDatePicker = false
     @State private var showAddTransaction = false
+    @State private var showLists = false
     @State private var isRefreshing = false
     @State private var syncErrorMessage: String?
     @AppStorage("appearanceMode") private var appearanceMode: String = AppearanceMode.auto.rawValue
@@ -81,6 +85,10 @@ struct ContentView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 24) {
+                    if let syncErrorMessage {
+                        syncErrorBanner(syncErrorMessage)
+                    }
+
                     // Transaction Lists
                     TransactionListView(transactions: filteredTransactions, modelContext: modelContext)
 
@@ -103,6 +111,12 @@ struct ContentView: View {
                     .popover(isPresented: $showDatePicker) {
                         DateRangePickerView(startDate: $startDate, endDate: $endDate, showPicker: $showDatePicker)
                             .presentationCompactAdaptation(.popover)
+                    }
+                }
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(action: { showLists = true }) {
+                        Image(systemName: "list.bullet.rectangle")
                     }
                 }
 
@@ -150,11 +164,48 @@ struct ContentView: View {
             .sheet(isPresented: $showAddTransaction) {
                 AddTransactionView()
             }
+            .sheet(isPresented: $showLists) {
+                NavigationStack {
+                    ExpenseListsView()
+                }
+            }
             .preferredColorScheme(currentAppearance.colorScheme)
+            .onReceive(NotificationCenter.default.publisher(for: .focusFiDataShouldRefresh)) { _ in
+                refreshData()
+            }
             .task {
                 await syncFromAPI()
             }
         }
+    }
+
+    @ViewBuilder
+    private func syncErrorBanner(_ message: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Sync Failed", systemImage: "exclamationmark.triangle.fill")
+                .font(.headline)
+                .foregroundStyle(.yellow)
+            Text(message)
+                .font(.subheadline)
+                .foregroundStyle(.primary)
+            HStack(spacing: 12) {
+                Button("Retry") {
+                    refreshData()
+                }
+                .buttonStyle(.borderedProminent)
+
+                #if DEBUG
+                Button("Copy Diagnostics") {
+                    copyDiagnosticsToClipboard()
+                }
+                .buttonStyle(.bordered)
+                #endif
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.yellow.opacity(0.15))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     private func clearAllData() {
@@ -192,6 +243,41 @@ struct ContentView: View {
             syncErrorMessage = nil
         }
 
+        let configurationIssues = APIConfig.configurationIssues()
+        if !configurationIssues.isEmpty {
+            await MainActor.run {
+                syncErrorMessage = configurationIssues.joined(separator: " | ")
+                isRefreshing = false
+            }
+            return
+        }
+
+        do {
+            _ = try await AuthService.shared.getAccessToken()
+        } catch {
+            await MainActor.run {
+                syncErrorMessage = "Authentication session unavailable. Please sign in again."
+                isRefreshing = false
+            }
+            return
+        }
+
+        do {
+            try await APIClient.shared.preflightConnectivityCheck()
+        } catch let error as APIError {
+            await MainActor.run {
+                syncErrorMessage = "API preflight failed: \(error.errorDescription ?? "Unknown error")"
+                isRefreshing = false
+            }
+            return
+        } catch {
+            await MainActor.run {
+                syncErrorMessage = "API preflight failed: \(error.localizedDescription)"
+                isRefreshing = false
+            }
+            return
+        }
+
         await transactionService.fetchExpensesAndIncome()
         await accountService.fetchAccounts()
 
@@ -201,6 +287,33 @@ struct ContentView: View {
             syncErrorMessage = transactionService.errorMessage ?? accountService.errorMessage
             isRefreshing = false
         }
+    }
+
+    #if DEBUG
+    private func copyDiagnosticsToClipboard() {
+        #if canImport(UIKit)
+        UIPasteboard.general.string = diagnosticsText()
+        #endif
+    }
+    #endif
+
+    private func diagnosticsText() -> String {
+        let formatter = ISO8601DateFormatter()
+        let transactionSyncAt = transactionService.lastSyncAt.map { formatter.string(from: $0) } ?? "n/a"
+        let accountSyncAt = accountService.lastSyncAt.map { formatter.string(from: $0) } ?? "n/a"
+        let txError = transactionService.lastSyncError?.message ?? "none"
+        let acctError = accountService.lastSyncError?.message ?? "none"
+
+        return """
+        FocusFi Sync Diagnostics
+        apiBaseURL: \(APIConfig.apiBaseURL)
+        transactionStatus: \(transactionService.lastSyncStatus.rawValue)
+        transactionLastSyncAt: \(transactionSyncAt)
+        transactionError: \(txError)
+        accountStatus: \(accountService.lastSyncStatus.rawValue)
+        accountLastSyncAt: \(accountSyncAt)
+        accountError: \(acctError)
+        """
     }
 
     private func persistTransactions(expenses: [APIExpense], income: [APIIncome]) {

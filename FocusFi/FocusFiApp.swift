@@ -7,7 +7,8 @@ struct FocusFiApp: App {
     @StateObject private var authService = AuthService.shared
 
     init() {
-        let schema = Schema([Transaction.self, BankAccount.self])
+        APIConfig.logRuntimeConfiguration()
+        let schema = Schema([Transaction.self, BankAccount.self, ExpenseList.self, ExpenseListItem.self])
         let storeURL = FileManager.default
             .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("FocusFi.store")

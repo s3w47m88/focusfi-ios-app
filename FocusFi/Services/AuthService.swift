@@ -14,6 +14,13 @@ class AuthService: ObservableObject {
     @Published var errorMessage: String?
 
     private init() {
+        let configurationIssues = APIConfig.configurationIssues()
+        #if DEBUG
+        if !configurationIssues.isEmpty {
+            print("[AuthService] Configuration issues: \(configurationIssues.joined(separator: " | "))")
+        }
+        #endif
+
         // Initialize Supabase client
         guard let url = URL(string: APIConfig.supabaseURL), !APIConfig.supabaseURL.isEmpty else {
             fatalError("Invalid or missing SUPABASE_URL")
