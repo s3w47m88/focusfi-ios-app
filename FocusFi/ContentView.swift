@@ -90,10 +90,17 @@ struct ContentView: View {
                     }
 
                     // Transaction Lists
-                    TransactionListView(transactions: filteredTransactions, modelContext: modelContext)
+                    TransactionListView(
+                        transactions: filteredTransactions,
+                        modelContext: modelContext,
+                        isLoading: transactionService.isLoading
+                    )
 
                     // Accounts
-                    CurrentFundsView(totalBalance: totalBalance)
+                    CurrentFundsView(
+                        totalBalance: totalBalance,
+                        isLoading: accountService.isLoading
+                    )
                 }
                 .padding()
             }

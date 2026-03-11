@@ -5,6 +5,7 @@ struct CurrentFundsView: View {
     @Query private var bankAccounts: [BankAccount]
 
     let totalBalance: Double
+    let isLoading: Bool
     @State private var isExpanded = false
     @State private var expandedBanks: Set<String> = []
 
@@ -38,6 +39,12 @@ struct CurrentFundsView: View {
                     Text("Accounts")
                         .font(.headline)
 
+                    if isLoading {
+                        ProgressView()
+                            .controlSize(.small)
+                            .padding(.leading, 4)
+                    }
+
                     Spacer()
 
                     Text("$\(totalBalance, specifier: "%.2f")")
@@ -56,12 +63,23 @@ struct CurrentFundsView: View {
 
             if isExpanded {
                 VStack(alignment: .leading, spacing: 16) {
-                    ForEach(sortedGroupIds, id: \.self) { groupId in
-                        BankSection(
-                            bankName: displayName(for: groupId),
-                            accounts: groupedAccounts[groupId] ?? [],
-                            isExpanded: bindingForBank(groupId)
-                        )
+                    if isLoading {
+                        HStack(spacing: 10) {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text("Loading accounts...")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                        }
+                    } else {
+                        ForEach(sortedGroupIds, id: \.self) { groupId in
+                            BankSection(
+                                bankName: displayName(for: groupId),
+                                accounts: groupedAccounts[groupId] ?? [],
+                                isExpanded: bindingForBank(groupId)
+                            )
+                        }
                     }
                 }
                 .padding(.top, 16)
@@ -206,6 +224,6 @@ private func balanceColor(_ value: Double) -> Color {
 }
 
 #Preview {
-    CurrentFundsView(totalBalance: 19880.50)
+    CurrentFundsView(totalBalance: 19880.50, isLoading: false)
         .modelContainer(for: BankAccount.self, inMemory: true)
 }

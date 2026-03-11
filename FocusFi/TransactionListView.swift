@@ -14,12 +14,12 @@ private enum NextThirtyBucket: String, CaseIterable, Identifiable {
 struct TransactionListView: View {
     let transactions: [Transaction]
     let modelContext: ModelContext
+    let isLoading: Bool
 
     @State private var isIncomeExpanded = false
     @State private var isExpenseExpanded = false
 
     @State private var selectedTransaction: Transaction?
-    @State private var showEditSheet = false
     @State private var rowToCloseID: UUID?
 
     private var incomeTransactions: [Transaction] {
@@ -45,7 +45,8 @@ struct TransactionListView: View {
                 total: totalIncome,
                 color: .green,
                 isExpanded: $isIncomeExpanded,
-                transactions: incomeTransactions
+                transactions: incomeTransactions,
+                isLoading: isLoading
             )
 
             sectionCard(
@@ -53,13 +54,12 @@ struct TransactionListView: View {
                 total: totalExpenses,
                 color: .red,
                 isExpanded: $isExpenseExpanded,
-                transactions: expenseTransactions
+                transactions: expenseTransactions,
+                isLoading: isLoading
             )
         }
-        .sheet(isPresented: $showEditSheet) {
-            if let selectedTransaction {
-                TransactionEditorView(transaction: selectedTransaction)
-            }
+        .sheet(item: $selectedTransaction) { transaction in
+            TransactionEditorView(transaction: transaction)
         }
     }
 
@@ -69,7 +69,8 @@ struct TransactionListView: View {
         total: Double,
         color: Color,
         isExpanded: Binding<Bool>,
-        transactions: [Transaction]
+        transactions: [Transaction],
+        isLoading: Bool
     ) -> some View {
         VStack(spacing: 0) {
             Button(action: { withAnimation(.spring(response: 0.3)) { isExpanded.wrappedValue.toggle() } }) {
@@ -80,6 +81,12 @@ struct TransactionListView: View {
 
                     Text(title)
                         .font(.headline)
+
+                    if isLoading {
+                        ProgressView()
+                            .controlSize(.small)
+                            .padding(.leading, 4)
+                    }
 
                     Spacer()
 
@@ -99,44 +106,57 @@ struct TransactionListView: View {
 
             if isExpanded.wrappedValue {
                 VStack(spacing: 10) {
-                    ForEach(NextThirtyBucket.allCases) { bucket in
-                        let items = bucketedTransactions(transactions, bucket: bucket)
-                        if !items.isEmpty {
-                            VStack(alignment: .leading, spacing: 8) {
-                                HStack {
-                                    Text(bucket.rawValue)
-                                        .font(.caption)
-                                        .fontWeight(.semibold)
-                                        .foregroundStyle(.secondary)
-                                    Spacer()
-                                    Text("\(items.count)")
-                                        .font(.caption2)
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 3)
-                                        .background(.ultraThinMaterial)
-                                        .clipShape(Capsule())
-                                }
-                                .padding(.horizontal)
+                    if isLoading {
+                        HStack(spacing: 10) {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text("Loading \(title.lowercased())...")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                        }
+                        .padding(.horizontal)
+                        .padding(.top, 8)
+                    } else {
+                        ForEach(NextThirtyBucket.allCases) { bucket in
+                            let items = bucketedTransactions(transactions, bucket: bucket)
+                            if !items.isEmpty {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    HStack {
+                                        Text(bucket.rawValue)
+                                            .font(.caption)
+                                            .fontWeight(.semibold)
+                                            .foregroundStyle(.secondary)
+                                        Spacer()
+                                        Text("\(items.count)")
+                                            .font(.caption2)
+                                            .padding(.horizontal, 8)
+                                            .padding(.vertical, 3)
+                                            .background(.ultraThinMaterial)
+                                            .clipShape(Capsule())
+                                    }
+                                    .padding(.horizontal)
 
-                                ForEach(items) { transaction in
-                                    TransactionRow(
-                                        transaction: transaction,
-                                        rowToCloseID: $rowToCloseID,
-                                        onDelete: { delete(transaction) },
-                                        onEdit: { openEditor(for: transaction) },
-                                        onMarkPaid: {
-                                            transaction.isPaid = true
-                                            try? modelContext.save()
-                                        },
-                                        onPauseToggle: {
-                                            transaction.isPaused.toggle()
-                                            try? modelContext.save()
-                                        },
-                                        onReschedule: { openEditor(for: transaction) }
-                                    )
+                                    ForEach(items) { transaction in
+                                        TransactionRow(
+                                            transaction: transaction,
+                                            rowToCloseID: $rowToCloseID,
+                                            onDelete: { delete(transaction) },
+                                            onEdit: { openEditor(for: transaction) },
+                                            onMarkPaid: {
+                                                transaction.isPaid = true
+                                                try? modelContext.save()
+                                            },
+                                            onPauseToggle: {
+                                                transaction.isPaused.toggle()
+                                                try? modelContext.save()
+                                            },
+                                            onReschedule: { openEditor(for: transaction) }
+                                        )
+                                    }
                                 }
+                                .padding(.top, 4)
                             }
-                            .padding(.top, 4)
                         }
                     }
                 }
@@ -180,7 +200,6 @@ struct TransactionListView: View {
 
     private func openEditor(for transaction: Transaction) {
         selectedTransaction = transaction
-        showEditSheet = true
     }
 
     private func delete(_ transaction: Transaction) {
@@ -454,5 +473,5 @@ struct TransactionEditorView: View {
     let sample = Transaction(title: "Sample", details: "Test", amount: 120.0, date: .now, dueDate: .now, type: .expense)
     container.mainContext.insert(sample)
 
-    return TransactionListView(transactions: [sample], modelContext: container.mainContext)
+    return TransactionListView(transactions: [sample], modelContext: container.mainContext, isLoading: false)
 }
