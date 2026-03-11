@@ -281,15 +281,16 @@ struct TransactionRow: View {
             }
             .padding(.horizontal)
             .padding(.vertical, 4)
+            .contentShape(Rectangle())
             .offset(x: dragOffset)
-            .gesture(
+            .simultaneousGesture(
                 DragGesture(minimumDistance: 10)
                     .onChanged { value in
                         let width = value.translation.width
                         let height = value.translation.height
 
                         if !isHorizontalSwipe {
-                            isHorizontalSwipe = abs(width) > abs(height) && abs(width) > 12
+                            isHorizontalSwipe = abs(width) > abs(height) && abs(width) > 20
                         }
 
                         guard isHorizontalSwipe else { return }
@@ -301,6 +302,7 @@ struct TransactionRow: View {
                     .onEnded { _ in
                         guard isHorizontalSwipe else {
                             dragOffset = 0
+                            isHorizontalSwipe = false
                             return
                         }
 
@@ -314,7 +316,6 @@ struct TransactionRow: View {
                         }
                         isHorizontalSwipe = false
                     }
-            , including: .gesture
             )
             .onChange(of: rowToCloseID) { _, newID in
                 if newID != transaction.id, dragOffset != 0 {
