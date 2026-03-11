@@ -219,6 +219,7 @@ struct TransactionRow: View {
 
     @State private var dragOffset: CGFloat = 0
     @State private var showActions = false
+    @State private var isHorizontalSwipe = false
 
     var body: some View {
         ZStack(alignment: .trailing) {
@@ -284,12 +285,25 @@ struct TransactionRow: View {
             .gesture(
                 DragGesture(minimumDistance: 10)
                     .onChanged { value in
-                        let translation = value.translation.width
-                        if translation < 0 {
-                            dragOffset = max(translation, -88)
+                        let width = value.translation.width
+                        let height = value.translation.height
+
+                        if !isHorizontalSwipe {
+                            isHorizontalSwipe = abs(width) > abs(height) && abs(width) > 12
+                        }
+
+                        guard isHorizontalSwipe else { return }
+
+                        if width < 0 {
+                            dragOffset = max(width, -88)
                         }
                     }
                     .onEnded { _ in
+                        guard isHorizontalSwipe else {
+                            dragOffset = 0
+                            return
+                        }
+
                         withAnimation(.spring(response: 0.25)) {
                             if dragOffset < -44 {
                                 dragOffset = -88
@@ -298,7 +312,9 @@ struct TransactionRow: View {
                                 dragOffset = 0
                             }
                         }
+                        isHorizontalSwipe = false
                     }
+            , including: .gesture
             )
             .onChange(of: rowToCloseID) { _, newID in
                 if newID != transaction.id, dragOffset != 0 {
